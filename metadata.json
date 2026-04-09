@@ -1,0 +1,5 @@
+{
+  "name": "花呗智能首页",
+  "description": "基于现有花呗首页的增量优化设计，集成 AI 摘要能力与信任成长体系。",
+  "requestFramePermissions": []
+}
