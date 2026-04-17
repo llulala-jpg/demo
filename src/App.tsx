@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   ArrowLeft, 
   Settings, 
@@ -344,21 +344,30 @@ const InstallmentSection = () => (
   </div>
 );
 
-const BottomNav = () => (
-  <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-6 py-2 flex justify-between items-center z-50">
-    <div className="flex flex-col items-center gap-1 text-blue-500">
+const BottomNav = ({ activePage, onNavigate }: { activePage: Page, onNavigate: (page: Page) => void }) => (
+  <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-100 px-6 py-2 pb-6 flex justify-between items-center z-[110]">
+    <div 
+      className={cn("flex flex-col items-center gap-1 cursor-pointer transition-colors", activePage === 'home' ? "text-blue-600 font-bold" : "text-gray-400")}
+      onClick={() => onNavigate('home')}
+    >
       <Home size={20} />
       <span className="text-[10px]">首页</span>
     </div>
-    <div className="flex flex-col items-center gap-1 text-gray-400">
+    <div 
+      className={cn("flex flex-col items-center gap-1 cursor-pointer transition-colors", activePage === 'bill-analysis' ? "text-blue-600 font-bold" : "text-gray-400")}
+      onClick={() => onNavigate('bill-analysis')}
+    >
       <FileText size={20} />
       <span className="text-[10px]">账单</span>
     </div>
-    <div className="flex flex-col items-center gap-1 text-gray-400">
+    <div 
+      className={cn("flex flex-col items-center gap-1 cursor-pointer transition-colors", activePage === 'credit-info' ? "text-blue-600 font-bold" : "text-gray-400")}
+      onClick={() => onNavigate('credit-info')}
+    >
       <CreditCard size={20} />
       <span className="text-[10px]">额度</span>
     </div>
-    <div className="flex flex-col items-center gap-1 text-gray-400">
+    <div className="flex flex-col items-center gap-1 text-gray-400 opacity-40 cursor-not-allowed">
       <User size={20} />
       <span className="text-[10px]">我的</span>
     </div>
@@ -478,43 +487,113 @@ const ChatAssistant = ({ activePage, onOpenSteward }: { activePage: Page, onOpen
 
 // --- Mascot Steward View (Upgraded Chat) ---
 
-const MascotStewardView = ({ onClose, initialQuestion }: { onClose: () => void, initialQuestion?: string }) => {
+const MascotStewardView = ({ onClose, onNavigate, initialQuestion }: { onClose: () => void, onNavigate: (page: Page) => void, initialQuestion?: string }) => {
   const [activeTab, setActiveTab] = useState<'consumption' | 'repayment' | 'credit' | 'health'>('consumption');
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>([
+    { role: 'model', text: "哈喽呀！我是你的超级省钱搭子『花小呗』🌸。最近是在发愁哪笔开支，还是想看看额度怎么涨？尽管问我，咱们一起把账单理清，让钱花在刀刃上！✨" }
+  ]);
   const [input, setInput] = useState('');
-
-  const handleAsk = useCallback((question: string) => {
-    if (!question.trim()) return;
-    setMessages(prev => [...prev, { role: 'user', text: question }]);
-    
-    // Simulated structured response
-    setTimeout(() => {
-      let response = "";
-      let actions: { label: string, action: string }[] = [];
-
-      if (question.includes('花得多') || question.includes('消费') || question.includes('分析')) {
-        response = "### 结论\n你这月花得多，主要不是因为单笔大额，而是高频小额消费变多了。\n\n### 原因\n过去30天你一共消费了26次，比平时多8次，增加最多的是外卖和打车。\n\n### 建议\n如果你想把节奏拉回来，这周可以先重点关注餐饮和即时消费。";
-        actions = [{ label: '去看账单分析', action: 'bill' }, { label: '去设置消费提醒', action: 'alert' }];
-      } else if (question.includes('还法') || question.includes('还款') || question.includes('方案')) {
-        response = "### 结论\n按你现在的状态，更适合先看“平衡还”。\n\n### 原因\n你这月待还金额高于平时，但还没到必须拉长周期的程度；同时你的下次入账在还款日后4天到账。\n\n### 建议\n用中间方案，既能留一点缓冲，也不会多花太多成本。";
-        actions = [{ label: '查看三档方案', action: 'repay' }, { label: '选这个方案', action: 'confirm' }];
-      } else if (question.includes('额度') || question.includes('恢复') || question.includes('占用')) {
-        response = "### 结论\n你有一笔退款还在处理中，所以额度还没完全回来。\n\n### 原因\n当前退款流程还没有全部结算完成，恢复速度会略慢于直接支付完成的场景。\n\n### 建议\n你可以先查看恢复进度，不用反复去猜测额度为什么变化。";
-        actions = [{ label: '查看额度记录', action: 'credit' }, { label: '查看恢复进度', action: 'progress' }];
-      } else {
-        response = "### 结论\n你最近的消费节奏整体处于“有点快了”的状态。\n\n### 原因\n本月消费 2180 元，比平时高出 32%，且频次有所增加。\n\n### 建议\n建议关注餐饮和出行支出，合理安排还款。";
-        actions = [{ label: '查看健康报告', action: 'health' }];
-      }
-
-      setMessages(prev => [...prev, { role: 'model', text: response, actions } as any]);
-    }, 1000);
-  }, []);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (initialQuestion) {
-      handleAsk(initialQuestion);
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [initialQuestion, handleAsk]);
+  }, [messages]);
+
+  const handleAsk = useCallback(async (question: string) => {
+    if (!question.trim() || isStreaming) return;
+    
+    const userMessage: Message = { role: 'user', text: question };
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsStreaming(true);
+
+    try {
+      const systemPrompt = `你是一位专业、亲切且充满活力（年轻感）的消费管家『花小呗』🌸。
+你的特质：
+1. 说话风格：像邻家小姐姐/好哥们，多用“哇”、“好哒”、“别担心”、“咱们一起看看”等语气词，善用 Emoji（如 ✨, 💸, 📊, 🚀, 🌸）。
+2. 分析模型：
+   - 消费：关注餐饮、出行、日常剁手。
+   - 额度：关注为什么没恢复、怎么提额。
+   - 还款：关注怎么分期、怎么还压力小。
+3. 决策建议：不要只描述现象，要给出明确的“下一步建议”。
+4. 交互引导：在回答中，如果涉及到具体功能，可以使用特定格式插入跳转按钮。
+   格式：[按钮名称|页面ID]
+   可用页面ID：
+   - bill-analysis (跳转到账单分析)
+   - credit-info (跳转到额度详情)
+   - repayment (跳转到还款建议)
+   例子：“想看看详细的消费分布吗？点击这里直达：[查看详细诊断|bill-analysis]”
+
+请记住：你的目标是让用户觉得理财不枯燥，还款有希望，消费有把控！`;
+      
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            { role: "system", content: systemPrompt },
+            ...messages.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })),
+            { role: "user", content: question }
+          ]
+        })
+      });
+
+      if (!response.ok) throw new Error("Failed to fetch from AI");
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let assistantMessage = { role: 'model' as const, text: '' };
+      
+      setMessages(prev => [...prev, assistantMessage]);
+
+      if (reader) {
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep the last partial line in buffer
+
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (trimmedLine.startsWith('data:')) {
+              try {
+                const data = JSON.parse(trimmedLine.slice(5));
+                const content = data.output.choices[0].message.content;
+                const newText = typeof content === 'string' ? content : content[0].text;
+                
+                assistantMessage.text += newText;
+                setMessages(prev => {
+                  const newMessages = [...prev];
+                  newMessages[newMessages.length - 1] = { ...assistantMessage };
+                  return newMessages;
+                });
+              } catch (e) {
+                // Ignore parse errors for partial or non-JSON lines
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Chat Error:", error);
+      setMessages(prev => [...prev, { role: 'model', text: "抱歉，小花刚才走神了，请再试一次吧~" }]);
+    } finally {
+      setIsStreaming(false);
+    }
+  }, [messages, isStreaming]);
+
+  // Removed automatic question on mount as requested
+  // useEffect(() => {
+  //   if (initialQuestion) {
+  //     handleAsk(initialQuestion);
+  //   }
+  // }, [initialQuestion, handleAsk]);
 
   return (
     <motion.div
@@ -542,7 +621,7 @@ const MascotStewardView = ({ onClose, initialQuestion }: { onClose: () => void, 
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-4 space-y-6 pb-24">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar px-4 space-y-6 pb-40">
         {/* 1. Identity Area */}
         <div className="flex flex-col items-center text-center pt-4">
           <div className="relative mb-4">
@@ -586,30 +665,6 @@ const MascotStewardView = ({ onClose, initialQuestion }: { onClose: () => void, 
               <span className="font-bold">小花总结：</span>这月你花得比平时多一些，主要是餐饮和出行在涨，离还款日也不远了，建议你先看看怎么还更稳。
             </p>
           </div>
-        </div>
-
-        {/* 3. Multi-perspective Tabs */}
-        <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
-          {[
-            { id: 'consumption', label: '消费变化', icon: <TrendingUp size={12} /> },
-            { id: 'repayment', label: '还款安排', icon: <Calendar size={12} /> },
-            { id: 'credit', label: '额度状态', icon: <Shield size={12} /> },
-            { id: 'health', label: '消费健康', icon: <CheckCircle2 size={12} /> },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={cn(
-                "flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all",
-                activeTab === tab.id 
-                  ? "bg-purple-600 text-white shadow-md shadow-purple-200" 
-                  : "bg-white text-gray-500 border border-gray-100"
-              )}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
         </div>
 
         {/* 4. Perspective Content */}
@@ -698,18 +753,26 @@ const MascotStewardView = ({ onClose, initialQuestion }: { onClose: () => void, 
               ) : (
                 <div className="space-y-3 max-w-[90%]">
                   <div className="bg-white p-4 rounded-2xl rounded-tl-none border border-purple-100 shadow-sm">
-                    <div className="prose prose-sm text-gray-800 leading-relaxed">
-                      {msg.text.split('\n\n').map((block, i) => {
-                        if (block.startsWith('###')) {
-                          const [title, ...content] = block.split('\n');
+                    <div className="text-xs text-gray-800 leading-relaxed">
+                      {msg.text.split(/(\[.*?\|.*?\])/g).map((part, i) => {
+                        const match = part.match(/\[(.*?)\|(.*?)\]/);
+                        if (match) {
+                          const [, label, action] = match;
                           return (
-                            <div key={i} className="mb-3 last:mb-0">
-                              <p className="font-bold text-purple-900 mb-1">{title.replace('### ', '')}</p>
-                              <p className="text-xs text-gray-600">{content.join('\n')}</p>
-                            </div>
+                            <button
+                              key={i}
+                              onClick={() => onNavigate(action as Page)}
+                              className="my-3 flex items-center justify-between w-full bg-purple-50 text-purple-600 px-4 py-3 rounded-2xl text-[11px] font-bold border border-purple-100 hover:bg-purple-100 transition-all active:scale-[0.98] group"
+                            >
+                              <div className="flex items-center gap-2">
+                                <Sparkles size={14} className="animate-pulse" />
+                                {label}
+                              </div>
+                              <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                            </button>
                           );
                         }
-                        return <p key={i} className="text-xs text-gray-600 mb-2 last:mb-0">{block}</p>;
+                        return <span key={i} className="whitespace-pre-wrap">{part}</span>;
                       })}
                     </div>
                     
@@ -776,16 +839,45 @@ const MascotStewardView = ({ onClose, initialQuestion }: { onClose: () => void, 
       </div>
 
       {/* Footer Input */}
-      <div className="shrink-0 p-4 bg-white/80 backdrop-blur-md border-t border-purple-50">
-        <div className="flex items-center gap-2">
+      <div className="shrink-0 bg-white/80 backdrop-blur-md border-t border-purple-50">
+        {/* Fixed Perspective Tabs above Input */}
+        <div className="flex gap-2 overflow-x-auto no-scrollbar px-4 py-3 border-b border-gray-50">
+          {[
+            { id: 'consumption', label: '消费变化', icon: <TrendingUp size={12} />, q: '我为什么这月花得多？' },
+            { id: 'repayment', label: '还款安排', icon: <Calendar size={12} />, q: '哪种还法更适合我？' },
+            { id: 'credit', label: '额度状态', icon: <Shield size={12} />, q: '为什么我的额度还没恢复？' },
+            { id: 'health', label: '消费健康', icon: <CheckCircle2 size={12} />, q: '我最近花得健康吗？' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveTab(tab.id as any);
+                handleAsk(tab.q);
+              }}
+              className={cn(
+                "flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap transition-all shrink-0",
+                activeTab === tab.id 
+                  ? "bg-purple-600 text-white shadow-sm" 
+                  : "bg-gray-50 text-gray-500 border border-transparent"
+              )}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="p-4">
+          <div className="flex items-center gap-2">
           <div className="flex-1 bg-gray-50 rounded-full px-4 py-2.5 flex items-center border border-purple-50">
             <input 
               type="text" 
-              placeholder="输入文本或长按说话..." 
-              className="flex-1 bg-transparent text-sm outline-none text-gray-800"
+              placeholder={isStreaming ? "小花正在思考中..." : "输入文本或长按说话..."} 
+              className="flex-1 bg-transparent text-sm outline-none text-gray-800 disabled:opacity-50"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAsk(input)}
+              disabled={isStreaming}
             />
             <button className="text-gray-400 hover:text-purple-500 transition-colors">
               <MessageCircle size={20} />
@@ -793,14 +885,20 @@ const MascotStewardView = ({ onClose, initialQuestion }: { onClose: () => void, 
           </div>
           <button 
             onClick={() => handleAsk(input)}
-            className="w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-lg shadow-purple-200 active:scale-90 transition-transform"
+            disabled={isStreaming || !input.trim()}
+            className="w-10 h-10 rounded-full bg-purple-600 text-white flex items-center justify-center shadow-lg shadow-purple-200 active:scale-90 transition-transform disabled:opacity-50 disabled:bg-gray-400"
           >
-            <Send size={18} />
+            {isStreaming ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Send size={18} />
+            )}
           </button>
         </div>
         <p className="text-center text-[9px] text-gray-300 mt-2">内容由 AI 生成</p>
       </div>
-    </motion.div>
+    </div>
+  </motion.div>
   );
 };
 
@@ -1151,7 +1249,6 @@ export default function App() {
             <QuickActions />
             <TrustGrowthCard />
             <InstallmentSection />
-            <BottomNav />
           </div>
         )}
 
@@ -1233,11 +1330,15 @@ export default function App() {
               setActivePage('home');
               setStewardQuestion(undefined);
             }} 
+            onNavigate={(p) => {
+              setActivePage(p);
+              setStewardQuestion(undefined);
+            }}
           />
         )}
         {activePage === 'bill-analysis' && (
           <DetailView title="4月账单分析诊断" onClose={() => setActivePage('home')}>
-            <div className="space-y-6 pb-10">
+            <div className="space-y-6 pb-32">
               {/* 1. Top Bill Amount Area */}
               <div className="px-5 pt-2">
                 <div className="flex justify-between items-end mb-1">
@@ -1675,7 +1776,7 @@ export default function App() {
               </div>
 
               {/* More Credit Section - Matches Screenshot */}
-              <div className="px-4 pb-10">
+              <div className="px-4 pb-32">
                 <h3 className="text-sm font-bold text-gray-400 mb-4 px-1">更多额度</h3>
                 <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-50">
                   {[
@@ -1706,6 +1807,14 @@ export default function App() {
           </DetailView>
         )}
       </AnimatePresence>
+
+      {/* Global Bottom Nav for Main Tabs */}
+      {['home', 'bill-analysis', 'credit-info', 'repayment'].includes(activePage) && (
+        <BottomNav 
+          activePage={activePage} 
+          onNavigate={(p) => setActivePage(p)} 
+        />
+      )}
       </div>
     </div>
   );
